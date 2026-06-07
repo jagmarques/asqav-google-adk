@@ -58,7 +58,7 @@ agent = LlmAgent(
 )
 ```
 
-Every tool call your agent makes produces signed `tool:start` and `tool:end` events through the Asqav API. Signatures use NIST FIPS 204 ML-DSA cryptography server-side, producing tamper-evident audit trails for EU AI Act, DORA, and SOC 2 compliance.
+Every tool call your agent makes produces signed `tool:start` and `tool:end` events through the Asqav API. Signing runs server-side with NIST FIPS 204 ML-DSA cryptography, so the audit trail is tamper-evident and holds up for EU AI Act, DORA, and SOC 2 evidence.
 
 ## Fail-open vs fail-closed
 
