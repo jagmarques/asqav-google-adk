@@ -16,7 +16,7 @@
 
 Stop a rogue agent before it acts, and prove what it tried.
 
-Uses the Google Agent Development Kit [tool callbacks](https://adk.dev/callbacks/types-of-callbacks/) (`before_tool_callback` and `after_tool_callback`) to sign every tool invocation with [Asqav](https://asqav.com), producing a tamper-evident record of what your agent attempted. By default the integration observes and records (fail-open, never blocks). Turn on fail-closed mode to block a tool the moment Asqav refuses to sign its start event.
+Uses the Google Agent Development Kit [tool callbacks](https://adk.dev/callbacks/types-of-callbacks/) `before_tool_callback` and `after_tool_callback` to sign every tool invocation with [Asqav](https://asqav.com), producing a tamper-evident record of what your agent attempted. By default the integration observes and records, fail-open, and never blocks. Turn on fail-closed mode to block a tool the moment Asqav refuses to sign its start event.
 
 ## Install
 
@@ -32,7 +32,7 @@ Once published, the install will be:
 pip install asqav-google-adk
 ```
 
-This pulls in the `asqav` SDK. Google ADK itself is a peer dependency you install separately (or via the `adk` extra):
+This pulls in the `asqav` SDK. Google ADK itself is a peer dependency you install separately, or via the `adk` extra:
 
 ```bash
 pip install "asqav-google-adk[adk]"
@@ -78,7 +78,7 @@ cb = AsqavCallbacks(agent_name="my-agent", fail_closed=True)  # block on refused
 
 `AsqavCallbacks` extends the Asqav adapter base class and exposes two ADK callbacks:
 
-- `before_tool_callback(tool, args, tool_context)` - signs `tool:start` with tool name and an input preview. Returns `None` to allow the tool to run, or a dict to block it (fail-closed).
+- `before_tool_callback(tool, args, tool_context)` - signs `tool:start` with tool name and an input preview. Returns `None` to allow the tool to run, or a dict to block it under fail-closed mode.
 - `after_tool_callback(tool, args, tool_context, tool_response)` - signs `tool:end` with tool name and output metadata. Returns `None` so the original tool response is kept unchanged.
 
 These signatures match the ADK `BeforeToolCallback` and `AfterToolCallback` type aliases: returning `None` from `before_tool_callback` lets execution proceed, and returning a non-empty dict skips the tool and uses that dict as its response.
@@ -87,7 +87,7 @@ These signatures match the ADK `BeforeToolCallback` and `AfterToolCallback` type
 
 `asqav-google-adk` is a thin wrapper around the `asqav` Python SDK and inherits its mode behavior:
 
-- Asqav cloud (`*.asqav.com`): the SDK hashes your action context locally and sends only the hash plus a small metadata bag. Raw prompts and tool arguments never leave your infrastructure.
+- Asqav cloud on `*.asqav.com`: the SDK hashes your action context locally and sends only the hash plus a small metadata bag. Raw prompts and tool arguments never leave your infrastructure.
 - Self-hosted: the SDK sends the full context so the server can run policy checks, PII redaction, and richer audit views.
 
 You can override per call:
