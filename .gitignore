@@ -26,3 +26,5 @@ CLAUDE.md
 
 # macOS
 .DS_Store
+# Local development files kept out of the published tree
+CHANGELOG.md
