@@ -18,6 +18,8 @@ Stop a rogue agent before it acts, and prove what it tried.
 
 Uses the Google Agent Development Kit [tool callbacks](https://adk.dev/callbacks/types-of-callbacks/) `before_tool_callback` and `after_tool_callback` to sign every tool invocation with [Asqav](https://asqav.com), producing a tamper-evident record of what your agent attempted. By default the integration observes and records, fail-open, and never blocks. Turn on fail-closed mode to block a tool the moment Asqav refuses to sign its start event.
 
+Asqav governs the agents you wire through it. An agent that never routes through the governed path produces no receipt and is not detected.
+
 ## Install
 
 Not yet on PyPI. Install from GitHub:
