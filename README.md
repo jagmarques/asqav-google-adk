@@ -22,14 +22,6 @@ Asqav governs the agents you wire through it. An agent that never routes through
 
 ## Install
 
-Not yet on PyPI. Install from GitHub:
-
-```bash
-pip install "git+https://github.com/jagmarques/asqav-google-adk.git"
-```
-
-Once published, the install will be:
-
 ```bash
 pip install asqav-google-adk
 ```
@@ -38,6 +30,12 @@ This pulls in the `asqav` SDK. Google ADK itself is a peer dependency you instal
 
 ```bash
 pip install "asqav-google-adk[adk]"
+```
+
+If the PyPI release has not landed yet, install straight from GitHub instead:
+
+```bash
+pip install "git+https://github.com/jagmarques/asqav-google-adk.git"
 ```
 
 ## Usage

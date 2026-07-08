@@ -27,8 +27,22 @@ jobs:
       - name: Run tests
         run: pytest -v
 
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build tools
+        run: pip install build twine
+      - name: Build sdist and wheel (publish dry run)
+        run: python -m build
+      - name: Check package metadata
+        run: twine check dist/*
+
   ci-ok:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, build]
     steps:
       - run: echo "CI passed"
