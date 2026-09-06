@@ -1,4 +1,4 @@
-"""Google ADK tool callbacks that sign tool:start and tool:end events via the
+"""Google ADK tool callbacks that attempt to sign tool:start and tool:end via the
 Asqav API. Signing is fail-open by default; an optional fail-closed mode blocks
 the tool (returns a response dict, skipping execution) when a tool:start
 signature is refused. See README for usage."""
@@ -24,23 +24,16 @@ _MAX_LEN = 200
 
 
 class AsqavCallbacks(AsqavAdapter):
-    """Sign Google ADK tool call events (tool:start, tool:end) via the Asqav API.
+    """Attempt to sign Google ADK tool-call events via the Asqav API.
 
-    Fail-open by default: signing errors are logged, not raised, so the agent
-    never breaks because of governance. Pass ``fail_closed=True`` to block a
-    tool when its tool:start signature is refused; ``before_tool_callback`` then
-    returns a response dict, which ADK uses in place of running the tool. The
-    attempt is still recorded.
+    Signing errors allow execution by default. With ``fail_closed=True``, a
+    signing attempt that returns no signature makes the before callback return
+    an error dict for ADK to use instead of executing the tool. A failed request
+    does not guarantee a receipt. Agent creation or lookup can raise during
+    construction; ADK dispatch determines whether the callbacks run.
 
-    Wire the callbacks onto an ``LlmAgent``::
-
-        cb = AsqavCallbacks(agent_name="my-agent")
-        agent = LlmAgent(
-            model="gemini-2.0-flash",
-            tools=[...],
-            before_tool_callback=cb.before_tool_callback,
-            after_tool_callback=cb.after_tool_callback,
-        )
+    Pass the methods as ``before_tool_callback`` and ``after_tool_callback``
+    on an ``LlmAgent``.
 
     Args:
         api_key: Optional API key override (uses ``asqav.init()`` default).
