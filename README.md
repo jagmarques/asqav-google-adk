@@ -3,9 +3,7 @@
     <img src="https://asqav.com/logo-text-white.png" alt="Asqav" width="200">
   </a>
 </p>
-<p align="center">
-  Stop a rogue agent before it acts, and prove what it tried.
-</p>
+<p align="center">Record Google ADK tool-call events with Asqav.</p>
 <p align="center">
   <a href="https://www.asqav.com/">Website</a> |
   <a href="https://www.asqav.com/docs">Docs</a> |
@@ -14,102 +12,124 @@
 
 # Asqav for Google ADK
 
-Stop a rogue agent before it acts, and prove what it tried.
-
-Uses the Google Agent Development Kit [tool callbacks](https://adk.dev/callbacks/types-of-callbacks/) `before_tool_callback` and `after_tool_callback` to sign every tool invocation with [Asqav](https://asqav.com), producing a tamper-evident record of what your agent attempted. By default the integration observes and records, fail-open, and never blocks. Turn on fail-closed mode to block a tool the moment Asqav refuses to sign its start event.
+Uses Google ADK's tool callbacks to attempt signing `tool:start` and `tool:end` events with [Asqav](https://asqav.com). Successful requests produce receipts signed on the Asqav server. Signing failures allow tool execution by default. With `fail_closed=True`, a signing attempt that returns no signature makes the before callback return an error dict, which ADK uses instead of executing the tool.
 
 Asqav governs the agents you wire through it. An agent that never routes through the governed path produces no receipt and is not detected.
 
 ## Install
 
-```bash
-pip install asqav-google-adk
-```
-
-This pulls in the `asqav` SDK. Google ADK itself is a peer dependency you install separately, or via the `adk` extra:
+Install the integration and Google ADK from this repository:
 
 ```bash
-pip install "asqav-google-adk[adk]"
+pip install "asqav-google-adk[adk] @ git+https://github.com/jagmarques/asqav-google-adk.git"
 ```
 
-If the PyPI release has not landed yet, install straight from GitHub instead:
+To use a local checkout, run this from its root:
 
 ```bash
-pip install "git+https://github.com/jagmarques/asqav-google-adk.git"
+pip install ".[adk]"
 ```
 
-## Usage
+The integration requires Asqav SDK 0.10.10 or newer in the 0.10 series and Google ADK 2.8.0 or newer. Google ADK is a peer dependency; the `[adk]` extra installs it.
+
+## Run an agent
+
+Set `ASQAV_API_KEY` and `ADK_MODEL`, then configure the model provider's credentials. The example calls both the model provider and the Asqav API.
 
 ```python
+import asyncio
+import os
+
 import asqav
 from google.adk.agents import LlmAgent
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.genai import types
+
 from asqav_google_adk import AsqavCallbacks
 
-asqav.init(api_key="sk_...")
+asqav.init(api_key=os.environ["ASQAV_API_KEY"], mode="hash-only")
+callbacks = AsqavCallbacks(agent_name="my-agent")
 
-cb = AsqavCallbacks(agent_name="my-agent")
+
+def echo_tool(text: str) -> dict:
+    """Return the supplied text."""
+    return {"echo": text}
+
 
 agent = LlmAgent(
-    model="gemini-2.0-flash",
-    name="assistant",
-    tools=[...],
-    before_tool_callback=cb.before_tool_callback,
-    after_tool_callback=cb.after_tool_callback,
+    model=os.environ["ADK_MODEL"],
+    name="echo_agent",
+    instruction="Use echo_tool to echo the user's message, then report its response.",
+    tools=[echo_tool],
+    before_tool_callback=callbacks.before_tool_callback,
+    after_tool_callback=callbacks.after_tool_callback,
 )
+
+
+async def main():
+    sessions = InMemorySessionService()
+    await sessions.create_session(
+        app_name="asqav_example", user_id="example_user", session_id="example_session"
+    )
+    runner = Runner(agent=agent, app_name="asqav_example", session_service=sessions)
+    async for event in runner.run_async(
+        user_id="example_user",
+        session_id="example_session",
+        new_message=types.Content(role="user", parts=[types.Part(text="hello world")]),
+    ):
+        if event.is_final_response() and event.content:
+            print(event.content)
+
+
+asyncio.run(main())
 ```
 
-Every tool call your agent makes produces signed `tool:start` and `tool:end` events through the Asqav API. Signing runs server-side with NIST FIPS 204 ML-DSA cryptography, so the audit trail is tamper-evident and holds up for EU AI Act, DORA, and SOC 2 evidence.
+Callbacks cover calls dispatched to them by ADK. Model calls and direct calls to tool functions are outside their coverage. Earlier callbacks or plugins can substitute responses or raise before these methods run. Unhandled tool errors can prevent the after callback; a substituted response can still reach it.
 
-## Fail-open vs fail-closed
+The integration does not call `Agent.preflight`; it requests signing directly. Its local gate checks whether signing returned a response, without inspecting that response's policy decision. A signing response is not independent proof of tool execution or approval to perform a real-world action.
 
-By default signing is fail-open. If the Asqav API is unreachable, a warning is logged but the tool call proceeds normally. Your agent never breaks because of governance:
+## Signing failures
+
+The default callback logs a signing failure and returns `None`, allowing ADK to continue. This includes refused signing requests and outages. Failed requests do not guarantee receipts. Agent creation or lookup happens during `AsqavCallbacks` construction and can raise in either mode.
+
+To have a missing start signature substitute an error response for the tool call:
 
 ```python
-cb = AsqavCallbacks(agent_name="my-agent")  # observe and record only
+callbacks = AsqavCallbacks(agent_name="my-agent", fail_closed=True)
 ```
 
-To stop a rogue agent before it acts, enable fail-closed mode. When Asqav refuses to sign a tool's start event, `before_tool_callback` returns a response dict. In ADK, a dict returned from `before_tool_callback` is used in place of running the tool, so execution is skipped. The attempt is still recorded:
+Pass its methods as `before_tool_callback` and `after_tool_callback` on the agent, as above. ADK controls callback dispatch and response substitution; this is a gate on that tool call, not a guarantee that the agent run stops.
 
-```python
-cb = AsqavCallbacks(agent_name="my-agent", fail_closed=True)  # block on refused sign
-```
+## Callback data
 
-## How it works
+`AsqavCallbacks` extends the Asqav adapter base class and exposes:
 
-`AsqavCallbacks` extends the Asqav adapter base class and exposes two ADK callbacks:
+- `before_tool_callback(tool, args, tool_context)`: attempts to sign `tool:start` with the tool name and an input preview capped at 200 characters. It returns `None` to continue or an error dict when signing returns no signature in fail-closed mode.
+- `after_tool_callback(tool, args, tool_context, tool_response)`: attempts to sign `tool:end` with the tool name, response type and length of its string representation. It returns `None` to preserve the response.
 
-- `before_tool_callback(tool, args, tool_context)` - signs `tool:start` with tool name and an input preview. Returns `None` to allow the tool to run, or a dict to block it under fail-closed mode.
-- `after_tool_callback(tool, args, tool_context, tool_response)` - signs `tool:end` with tool name and output metadata. Returns `None` so the original tool response is kept unchanged.
-
-These signatures match the ADK `BeforeToolCallback` and `AfterToolCallback` type aliases: returning `None` from `before_tool_callback` lets execution proceed, and returning a non-empty dict skips the tool and uses that dict as its response.
+An end event describes the response seen by the after callback. It does not establish that a tool executed or succeeded. An end-signing failure cannot undo completed work.
 
 ## Data handling
 
-`asqav-google-adk` is a thin wrapper around the `asqav` Python SDK and inherits its mode behavior:
+Configure the SDK mode before constructing the callbacks:
 
-- Asqav cloud on `*.asqav.com`: the SDK hashes your action context locally and sends only the hash plus a small metadata bag. Raw prompts and tool arguments never leave your infrastructure.
-- Self-hosted: the SDK sends the full context so the server can run policy checks, PII redaction, and richer audit views.
+- In `hash-only` mode, the SDK sends a digest of the action and callback context, its byte length, and SDK metadata. The input preview contributes to the digest and is not sent as context.
+- In `full-payload` mode, the SDK sends the callback context, including the input preview.
 
-You can override per call:
-
-```python
-import asqav
-
-asqav.init(api_key="sk_...", base_url="https://api.asqav.com", mode="hash-only")
-```
-
-See the [SDK fingerprint spec](https://github.com/jagmarques/asqav-sdk/blob/main/docs/fingerprint-spec.md) for the canonicalization and conformance vectors.
+These settings control requests to Asqav. Model providers and tools handle their own traffic separately.
 
 ## Configuration
 
 ```python
-# Use an existing Asqav agent by ID
-cb = AsqavCallbacks(agent_id="ag_abc123")
+# Use an existing Asqav agent by ID.
+callbacks = AsqavCallbacks(agent_id="ag_abc123")
 
-# Override the API key
-cb = AsqavCallbacks(api_key="sk_other", agent_name="audit-agent")
+# Set the SDK key and mode together before constructing callbacks.
+asqav.init(api_key=os.environ["ASQAV_API_KEY"], mode="hash-only")
+callbacks = AsqavCallbacks(agent_name="audit-agent")
 ```
 
 ## License
 
-MIT
+[Elastic License 2.0](LICENSE)
