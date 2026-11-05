@@ -8,7 +8,7 @@ on:
 
 jobs:
   publish-python:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, hz-ci-light]
     permissions:
       id-token: write
       contents: read
