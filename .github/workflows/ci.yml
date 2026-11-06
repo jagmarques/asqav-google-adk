@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, hz-ci-light]
     strategy:
       fail-fast: false
       matrix:
@@ -28,7 +28,7 @@ jobs:
         run: pytest -v
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, hz-ci-light]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,7 +42,7 @@ jobs:
         run: twine check dist/*
 
   ci-ok:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, hz-ci-light]
     needs: [test, build]
     steps:
       - run: echo "CI passed"
